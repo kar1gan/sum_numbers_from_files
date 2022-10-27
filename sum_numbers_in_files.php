@@ -3,12 +3,13 @@
 
 declare(strict_types=1);
 
-$start           = __DIR__;
-$sum             = 0;
-$dirs            = 0;
-$files           = 0;
-$searchedFiles   = 0;
-$maxNestingLevel = 0;
+$start               = __DIR__;
+$sum                 = 0;
+$searchedFiles       = 0;
+$maxNestingLevel     = 0;
+$currentNestingLevel = 0;
+$scannedDirs         = [];
+$scannedFiles        = [];
 
 $excludedPaths = ['.', '..'];
 
@@ -20,13 +21,9 @@ $excludedPaths = ['.', '..'];
  * @return void
  */
 function directoryScan(string $currentDir): void {
-	global $dirs;
-	global $files;
-    global $excludedPaths;
-
-	static $scannedDirs         = [];
-	static $scannedFiles        = [];
-	static $currentNestingLevel = 0;
+	global $excludedPaths;
+	global $scannedDirs;
+	global $scannedFiles;
 
 	if (false === ($resource = opendir($currentDir))) {
 		echo sprintf('Произошла ошибка при открытии каталога %s', $currentDir);
@@ -44,7 +41,7 @@ function directoryScan(string $currentDir): void {
 		if (is_dir($child)) {
 			closedir($resource);
 
-			changeCurrentNestingLevel($currentNestingLevel, $child);
+			changeCurrentNestingLevel($child);
 
 			directoryScan($child);
 		}
@@ -58,10 +55,7 @@ function directoryScan(string $currentDir): void {
 
 	closedir($resource);
 
-	backwardDirectoryScan($currentDir, $scannedDirs);
-
-	$files = count($scannedFiles);
-	$dirs  = count($scannedDirs);
+	backwardDirectoryScan($currentDir);
 
 	echoResult();
 
@@ -71,42 +65,40 @@ function directoryScan(string $currentDir): void {
 /**
  * Обратное сканирование каталога
  *
- * @param string   $dir           Текущая директория
- * @param string[] $scannedDirs   Массив просканированных директорий
- * @param string[] $excludedPaths Массив исключенных директорий
+ * @param string $currentDir Текущая директория
  *
  * @return void
  */
-function backwardDirectoryScan(string $dir, array &$scannedDirs): void {
+function backwardDirectoryScan(string $currentDir): void {
 	global $start;
-	global $excludedPaths;
+	global $scannedDirs;
 
-	if ($start === $dir) {
+	if ($start === $currentDir) {
 		return;
 	}
 
-	updateScannedDirs($dir, $scannedDirs, $excludedPaths);
+	updateScannedDirs($currentDir);
 
-	while (in_array($dir, $scannedDirs)) {
-		$exploded = explode('/', $dir);
+	while (in_array($currentDir, $scannedDirs)) {
+		$exploded = explode('/', $currentDir);
 		array_pop($exploded);
 
-		$dir = implode('/', $exploded);
+		$currentDir = implode('/', $exploded);
 	}
 
-	directoryScan($dir);
+	directoryScan($currentDir);
 }
 
 /**
  * Обновление списка просканированных директорий
  *
- * @param string   $currentDir    Текущая директория
- * @param string[] $scannedDirs   Массив просканированных директорий
+ * @param string $currentDir Текущая директория
  *
  * @return void
  */
-function updateScannedDirs(string $currentDir, array &$scannedDirs): void {
-    global $excludedPaths;
+function updateScannedDirs(string $currentDir): void {
+	global $excludedPaths;
+	global $scannedDirs;
 
 	$childs = scandir($currentDir);
 	$childs = array_filter($childs, function($child) use ($excludedPaths) {
@@ -125,17 +117,17 @@ function updateScannedDirs(string $currentDir, array &$scannedDirs): void {
 /**
  * Обновление текущего уровня вложенности
  *
- * @param int    $currentNestingLevel Текущий уровень вложенности
- * @param string $dir                 Текущая директория
+ * @param string $currentDir Текущая директория
  *
  * @return void
  */
-function changeCurrentNestingLevel(int &$currentNestingLevel, string $dir): void {
+function changeCurrentNestingLevel(string $currentDir): void {
 	global $start;
 	global $maxNestingLevel;
+	global $currentNestingLevel;
 
 	$explodedStartDir   = explode('/', $start);
-	$explodedCurrentDir = explode('/', $dir);
+	$explodedCurrentDir = explode('/', $currentDir);
 
 	$currentNestingLevel = count($explodedCurrentDir) - count($explodedStartDir);
 
@@ -193,14 +185,14 @@ function sum(array $numbers): void {
  */
 function echoResult(): void {
 	global $sum;
-	global $dirs;
-	global $files;
+	global $scannedDirs;
+	global $scannedFiles;
 	global $searchedFiles;
 	global $maxNestingLevel;
 
 	echo sprintf('Сумма всех чисел - %u', $sum) . PHP_EOL;
-	echo sprintf('Количество просканированных директорий - %u', $dirs) . PHP_EOL;
-	echo sprintf('Количество просканированных файлов - %u', $files) . PHP_EOL;
+	echo sprintf('Количество просканированных директорий - %u', count($scannedDirs)) . PHP_EOL;
+	echo sprintf('Количество просканированных файлов - %u', count($scannedFiles)) . PHP_EOL;
 	echo sprintf('Количество искомых файлов - %u', $searchedFiles) . PHP_EOL;
 	echo sprintf('Максимальный уровень вложенности - %u', $maxNestingLevel) . PHP_EOL;
 }
