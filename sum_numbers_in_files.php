@@ -10,6 +10,8 @@ $files           = 0;
 $searchedFiles   = 0;
 $maxNestingLevel = 0;
 
+$excludedPaths = ['.', '..'];
+
 /**
  * Сканирование каталога в глубину
  *
@@ -20,8 +22,7 @@ $maxNestingLevel = 0;
 function directoryScan(string $currentDir): void {
 	global $dirs;
 	global $files;
-
-	$excludedPaths = ['.', '..'];
+    global $excludedPaths;
 
 	static $scannedDirs         = [];
 	static $scannedFiles        = [];
@@ -57,7 +58,7 @@ function directoryScan(string $currentDir): void {
 
 	closedir($resource);
 
-	backwardDirectoryScan($currentDir, $scannedDirs, $excludedPaths);
+	backwardDirectoryScan($currentDir, $scannedDirs);
 
 	$files = count($scannedFiles);
 	$dirs  = count($scannedDirs);
@@ -76,8 +77,9 @@ function directoryScan(string $currentDir): void {
  *
  * @return void
  */
-function backwardDirectoryScan(string $dir, array &$scannedDirs, array $excludedPaths): void {
+function backwardDirectoryScan(string $dir, array &$scannedDirs): void {
 	global $start;
+	global $excludedPaths;
 
 	if ($start === $dir) {
 		return;
@@ -100,11 +102,12 @@ function backwardDirectoryScan(string $dir, array &$scannedDirs, array $excluded
  *
  * @param string   $currentDir    Текущая директория
  * @param string[] $scannedDirs   Массив просканированных директорий
- * @param string[] $excludedPaths Массив исключенных путей
  *
  * @return void
  */
-function updateScannedDirs(string $currentDir, array &$scannedDirs, array $excludedPaths): void {
+function updateScannedDirs(string $currentDir, array &$scannedDirs): void {
+    global $excludedPaths;
+
 	$childs = scandir($currentDir);
 	$childs = array_filter($childs, function($child) use ($excludedPaths) {
 		return (false === in_array($child, $excludedPaths) && (true === is_dir($child)));
