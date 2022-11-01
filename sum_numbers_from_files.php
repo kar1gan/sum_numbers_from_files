@@ -3,6 +3,8 @@
 
 declare(strict_types=1);
 
+define("ACCEPTED_PARAMS", [basename(__FILE__), '-h', '--help', '-f', '--files', '-e', '--extensions', '-ep', '--excluded_paths']);
+
 $start               = __DIR__;
 $sum                 = 0;
 $searchedFiles       = 0;
@@ -11,25 +13,40 @@ $currentNestingLevel = 0;
 $scannedDirs         = [];
 $scannedFiles        = [];
 
-$excludedPaths = ['.', '..'];
+$excludedPaths           = ['.', '..'];
+$acceptedFilesNames      = ['count'];
+$acceptedFilesExtensions = ['', 'txt'];
+
+$currentDirectory = $start;
+
+run();
+
+function run(): void {
+	global $start;
+
+	parseArgs();
+
+	scanDirectory($start);
+}
 
 /**
- * Сканирование каталога в глубину
+ * Scanning a directory in depth
  *
- * @param string $currentDir Текущая директория
+ * @param string $currentDir Current directory
  *
  * @return void
  */
-function directoryScan(string $currentDir): void {
+function scanDirectory(string $currentDir): void {
 	global $excludedPaths;
 	global $scannedDirs;
 	global $scannedFiles;
+	global $currentDirectory;
 
 	if (false === ($resource = opendir($currentDir))) {
-		echo sprintf('Произошла ошибка при открытии каталога %s', $currentDir);
-
-		exit;
+		exit(sprintf('An error occurred while opening the directory %s', $currentDir) . PHP_EOL);
 	}
+
+	$currentDirectory = $currentDir;
 
 	while (false !== ($child = readdir($resource))) {
 		$child = $currentDir . '/' . $child;
@@ -41,9 +58,9 @@ function directoryScan(string $currentDir): void {
 		if (is_dir($child)) {
 			closedir($resource);
 
-			changeCurrentNestingLevel($child);
+			updateCurrentNestingLevel();
 
-			directoryScan($child);
+			scanDirectory($child);
 		}
 
 		if (is_file($child)) {
@@ -55,79 +72,76 @@ function directoryScan(string $currentDir): void {
 
 	closedir($resource);
 
-	backwardDirectoryScan($currentDir);
+	backwardDirectoryScan();
 
-	echoResult();
+	showSummaryInfo();
 
 	exit;
 }
 
 /**
- * Обратное сканирование каталога
- *
- * @param string $currentDir Текущая директория
+ * Backward directory scan
  *
  * @return void
  */
-function backwardDirectoryScan(string $currentDir): void {
+function backwardDirectoryScan(): void {
 	global $start;
 	global $scannedDirs;
+	global $currentDirectory;
 
-	if ($start === $currentDir) {
+	if ($start === $currentDirectory) {
 		return;
 	}
 
-	updateScannedDirs($currentDir);
+	updateScannedDirs();
 
-	while (in_array($currentDir, $scannedDirs)) {
-		$exploded = explode('/', $currentDir);
+	while (in_array($currentDirectory, $scannedDirs)) {
+		$exploded = explode('/', $currentDirectory);
 		array_pop($exploded);
 
-		$currentDir = implode('/', $exploded);
+		$currentDirectory = implode('/', $exploded);
 	}
 
-	directoryScan($currentDir);
+	scanDirectory($currentDirectory);
 }
 
 /**
- * Обновление списка просканированных директорий
- *
- * @param string $currentDir Текущая директория
+ * Updating the list of scanned directories
  *
  * @return void
  */
-function updateScannedDirs(string $currentDir): void {
+function updateScannedDirs(): void {
 	global $excludedPaths;
 	global $scannedDirs;
+	global $currentDirectory;
 
-	$childs = scandir($currentDir);
+	$childs = scandir($currentDirectory);
 	$childs = array_filter($childs, function($child) use ($excludedPaths) {
 		return (false === in_array($child, $excludedPaths) && (true === is_dir($child)));
 	});
-	$childs = array_map(fn($child): string => $currentDir . '/' . $child, $childs);
+	$childs = array_map(fn($child): string => $currentDirectory . '/' . $child, $childs);
 	foreach ($childs as $child) {
 		if (false === in_array($child, $scannedDirs)) {
 			return;
 		}
 	}
 
-	$scannedDirs[] = $currentDir;
+	$scannedDirs[] = $currentDirectory;
 }
 
 /**
- * Обновление текущего уровня вложенности
- *
- * @param string $currentDir Текущая директория
+ * Update current nesting level
  *
  * @return void
  */
-function changeCurrentNestingLevel(string $currentDir): void {
+function updateCurrentNestingLevel(): void {
 	global $start;
+	global $currentDirectory;
 	global $maxNestingLevel;
 	global $currentNestingLevel;
 
 	$explodedStartDir   = explode('/', $start);
-	$explodedCurrentDir = explode('/', $currentDir);
+	$explodedCurrentDir = explode('/', $currentDirectory);
 
 	$currentNestingLevel = count($explodedCurrentDir) - count($explodedStartDir);
 
@@ -135,18 +149,17 @@ function changeCurrentNestingLevel(string $currentDir): void {
 }
 
 /**
- * Сканирование файла
+ * Scan file
  *
- * @param string $filepath Абсолютный путь к файлу
+ * @param string $filepath Absolute path to the file
  *
  * @return void
  */
 function scanFile(string $filepath): void {
 	global $searchedFiles;
+	global $acceptedFilesExtensions;
 
-	$acceptedExtensions = ['', 'txt'];
-
-	if ('count' !== pathInfo($filepath, PATHINFO_FILENAME) || false === in_array(pathinfo($filepath, PATHINFO_EXTENSION), $acceptedExtensions)) {
+	if ('count' !== pathInfo($filepath, PATHINFO_FILENAME) || false === in_array(pathinfo($filepath, PATHINFO_EXTENSION), $acceptedFilesExtensions)) {
 		return;
 	}
 
@@ -164,9 +177,9 @@ function scanFile(string $filepath): void {
 }
 
 /**
- * Суммирование чисел из файла с итоговым значением
+ * Summing numbers from a file with a total value
  *
- * @param string[] $numbers Числа из файла
+ * @param string[] $numbers Numbers from file
  *
  * @return void
  */
@@ -179,22 +192,88 @@ function sum(array $numbers): void {
 }
 
 /**
- * Вывод итоговой информации
+ * Show summary info
  *
  * @return void
  */
-function echoResult(): void {
+function showSummaryInfo(): void {
 	global $sum;
 	global $scannedDirs;
 	global $scannedFiles;
 	global $searchedFiles;
 	global $maxNestingLevel;
 
-	echo sprintf('Сумма всех чисел - %u', $sum) . PHP_EOL;
-	echo sprintf('Количество просканированных директорий - %u', count($scannedDirs)) . PHP_EOL;
-	echo sprintf('Количество просканированных файлов - %u', count($scannedFiles)) . PHP_EOL;
-	echo sprintf('Количество искомых файлов - %u', $searchedFiles) . PHP_EOL;
-	echo sprintf('Максимальный уровень вложенности - %u', $maxNestingLevel) . PHP_EOL;
+	echo sprintf('Sum of all numbers - %u', $sum) . PHP_EOL;
+	echo sprintf('Number of scanned directories - %u', count($scannedDirs)) . PHP_EOL;
+	echo sprintf('Number of scanned files - %u', count($scannedFiles)) . PHP_EOL;
+	echo sprintf('Number of searched files - %u', $searchedFiles) . PHP_EOL;
+	echo sprintf('Maximum nesting level - %u', $maxNestingLevel) . PHP_EOL;
 }
 
-directoryScan($start);
+/**
+ * Parse arguments
+ *
+ * @return void
+ */
+function parseArgs(): void {
+	global $argv;
+	global $acceptedFilesNames;
+	global $acceptedFilesExtensions;
+	global $excludedPaths;
+
+	if ([] !== ($notAcceptedParams = array_diff($argv, ACCEPTED_PARAMS))) {
+		exit(sprintf('Passed not accepted params: %s', implode(', ', $notAcceptedParams)) . PHP_EOL);
+	}
+
+	$helpParam = getopt('h', ['help']);
+	if (false !== $helpParam && [] !== $helpParam) {
+		showHelp();
+
+		exit;
+	}
+
+	$acceptedFilesParam = getopt('f::', ['files::']);
+	if (false !== $acceptedFilesParam && [] !== $acceptedFilesParam) {
+		if (in_array(false, $acceptedFilesParam)) {
+			exit('Filenames not passed.' . PHP_EOL);
+		}
+
+		$files              = $acceptedFilesParam['f'] ?? $acceptedFilesParam['files'];
+		$acceptedFilesNames = explode(',', $files);
+	}
+
+	$extensionsParam = getopt('e::', ['ext::']);
+	if (false !== $extensionsParam && [] !== $extensionsParam) {
+		if (in_array(false, $extensionsParam)) {
+			exit('Extensions not passed.' . PHP_EOL);
+		}
+
+		$extensions              = $extensionsParam['e'] ?? $extensionsParam['extensions'];
+		$acceptedFilesExtensions = explode(',', $extensions);
+	}
+
+	$globPatternOfExcludedDirs = getopt('ep::', ['excluded_paths::']);
+	if (false !== $globPatternOfExcludedDirs && [] !== $globPatternOfExcludedDirs) {
+		if (in_array(false, $globPatternOfExcludedDirs)) {
+			exit('Glob pattern not passed.' . PHP_EOL);
+		}
+
+		$pattern = $globPatternOfExcludedDirs['ep'] ?? $globPatternOfExcludedDirs['excluded_paths'];
+		if (false !== ($dirs = glob($pattern, GLOB_ONLYDIR))) {
+			$excludedPaths = array_merge($excludedPaths, $dirs);
+		}
+	}
+}
+
+/**
+ * Show tips
+ *
+ * @return void
+ */
+function showHelp(): void {
+	echo 'This script can sum numbers in some files with some extensions.' . PHP_EOL . PHP_EOL;
+	echo '--help -h            - Show this help;' . PHP_EOL;
+	echo '--files -f           - Filenames to search separated by commas. Example: "test,common,file";' . PHP_EOL;
+	echo '--extensions -e      - Allowed extensions separated by commas. Example: "txt,rtf,docx";' . PHP_EOL;
+	echo '--excluded_paths -ep - Glob pattern to exclude directories;' . PHP_EOL;
+}
